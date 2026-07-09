@@ -5,15 +5,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import au.edu.jcu.cp3406_cp5307_utilityappstartertemplate.ui.theme.CP3406_CP5603UtilityAppStarterTemplateTheme
 
 class MainActivity : ComponentActivity() {
@@ -60,6 +65,7 @@ fun UtilityApp() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UtilityScreen(viewModel: WeatherViewModel) {
 
@@ -68,54 +74,137 @@ fun UtilityScreen(viewModel: WeatherViewModel) {
         viewModel.fetchWeather()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+    PullToRefreshBox(
+        isRefreshing = viewModel.isLoading,
+        onRefresh = { viewModel.fetchWeather() },
+        modifier = Modifier.fillMaxSize()
     ) {
-        if (viewModel.isLoading) {
-            CircularProgressIndicator()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            when {
+                viewModel.errorMessage != null -> {
+                    Text(
+                        text = viewModel.errorMessage!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = { viewModel.fetchWeather() }) {
+                        Text("Retry")
+                    }
+                }
 
-        } else if (viewModel.errorMessage != null) {
-            Text(
-                text = viewModel.errorMessage!!,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = { viewModel.fetchWeather() }) {
-                Text("Retry")
-            }
-
-        } else {
-            val weather = viewModel.weatherData
-            if (weather != null) {
-                Text(
-                    text = weather.name,
-                    style = MaterialTheme.typography.headlineMedium
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "${weather.main.temp.toInt()}°${if (viewModel.units == "metric") "C" else "F"}",
-                    style = MaterialTheme.typography.displayLarge
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = weather.weather[0].description.replaceFirstChar { it.uppercase() },
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Humidity: ${weather.main.humidity}%",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = { viewModel.fetchWeather() }) {
-                    Text("Refresh")
+                viewModel.weatherData != null -> {
+                    WeatherCard(viewModel.weatherData!!, viewModel.units)
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun WeatherCard(weather: WeatherResponse, units: String) {
+    val tempUnit = if (units == "metric") "C" else "F"
+    val speedUnit = if (units == "metric") "m/s" else "mph"
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = weather.name,
+                style = MaterialTheme.typography.headlineMedium
+            )
+            AsyncImage(
+                model = "https://openweathermap.org/img/wn/${weather.weather[0].icon}@4x.png",
+                contentDescription = weather.weather[0].description,
+                modifier = Modifier.size(120.dp)
+            )
+            Text(
+                text = "${weather.main.temp.toInt()}°$tempUnit",
+                style = MaterialTheme.typography.displayLarge
+            )
+            Text(
+                text = weather.weather[0].description.replaceFirstChar { it.uppercase() },
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Feels like ${weather.main.feelsLike.toInt()}°$tempUnit  ·  " +
+                        "H ${weather.main.tempMax.toInt()}° / L ${weather.main.tempMin.toInt()}°",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        WeatherDetailCard(
+            label = "Humidity",
+            value = "${weather.main.humidity}%",
+            modifier = Modifier.weight(1f)
+        )
+        WeatherDetailCard(
+            label = "Wind",
+            value = "${weather.wind.speed} $speedUnit",
+            modifier = Modifier.weight(1f)
+        )
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    Text(
+        text = "Pull down to refresh",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+fun WeatherDetailCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleLarge
+            )
         }
     }
 }
